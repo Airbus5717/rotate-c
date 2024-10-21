@@ -1,0 +1,28 @@
+@import url("https://fonts.googleapis.com/css2?family=Open+Sans:wght@700&display=swap");
+
+html {
+  font-size: 1.2rem;
+  border: none;
+  /* font-family: "Inter", sans-serif; */
+}
+body { border: none; }
+
+
+img {
+  width: 750px;
+  border-radius: 10px;
+}
+
+pre {
+  background-color: #181f27;
+  border-radius: 1rem;
+  counter-reset: line;
+  border: none;
+  color: #ededed;
+  line-height: 1.6;
+  font-family: "Inconsolata", monospace;
+}
+
+::selection {
+  background: rgb(240, 170, 123);
+}

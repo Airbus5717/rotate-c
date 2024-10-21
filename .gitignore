@@ -1,0 +1,12 @@
+build/
+.vscode/
+.cache/
+*.swp
+*.tex
+*.log
+docs/_minted-index/*
+TODO.txt
+main.vr
+output.org
+gmon.out
+zig-*
