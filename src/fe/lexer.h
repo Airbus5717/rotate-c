@@ -12,13 +12,13 @@ typedef struct Lexer
     LexErr error;
     uint save_index, save_line;
     TknType prev;
-    ArrayList(Token) tokens;
+    Array(Token) tokens;
 } Lexer;
 
 // Lexer API
 Lexer lexer_init(File *);
 void lexer_deinit(Lexer *);
-ArrayList(Token) lexer_get_tokens(Lexer *lexer);
+Array(Token) lexer_get_tokens(Lexer *lexer);
 u8 lexer_lex(Lexer *);
 void lexer_save_log(Lexer *, FILE *);
 // internal methods are in lexer.c

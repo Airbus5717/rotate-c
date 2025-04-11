@@ -1,69 +1,83 @@
 #include "../include/common.h"
 #include "../fe/token.h"
+#include <time.h> // For timestamps in logging
 
-// Memory allocation
-
-void *
-mem_alloc(usize size)
+// Centralized logging function
+static void log_message(const char *level, const char *color, cstr message)
 {
-    void *result = malloc(size);
-    return (result);
+    time_t now = time(NULL);
+    struct tm *t = localtime(&now);
+    char time_buffer[20];
+    strftime(time_buffer, sizeof(time_buffer), "%Y-%m-%d %H:%M:%S", t);
+
+    fprintf(stderr, "[%s%s%s] [%s]: %s\n", color, level, RESET, time_buffer, message);
 }
 
-void *
-mem_resize(void *blk, usize size)
+void log_stage(cstr str)
 {
-    void *result = realloc(blk, size);
-    return (result);
+    log_message("STAGE", LRED BOLD, str);
 }
 
-void
-mem_free(void *blk)
+void log_error(cstr str)
 {
-    free(blk);
+    log_message("ERROR", LRED BOLD, str);
 }
 
-// Logging
-
-void
-log_stage(cstr str)
-{
-    fprintf(stderr, "[%sSTAGE%s]: %s\n", LRED BOLD, RESET, str);
-}
-
-void
-log_error(cstr str)
-{
-    fprintf(stderr, "[%sERROR%s]: %s\n", LRED BOLD, RESET, str);
-}
-
-void
-exit_error(cstr str)
+void exit_error(cstr str)
 {
     log_error(str);
     exit(1);
 }
 
-void
-log_warn(cstr str)
+void log_warn(cstr str)
 {
-    fprintf(stderr, "[%sWARN%s] : %s\n", LYELLOW BOLD, RESET, str);
+    log_message("WARN", LYELLOW BOLD, str);
 }
 
-void // NOTE(5717): basically a print for debug builds
-log_debug(cstr str)
+void log_debug(cstr str)
 {
 #if DEBUG
-    fprintf(stderr, "[%sDEBUG%s]: %s\n", LYELLOW BOLD, RESET, str);
+    log_message("DEBUG", LYELLOW BOLD, str);
 #else
     UNUSED(str);
 #endif
 }
 
-void
-log_info(cstr str)
+void log_info(cstr str)
 {
-    fprintf(stderr, "[%sINFO%s] : %s\n", LGREEN BOLD, RESET, str);
+    log_message("INFO", LGREEN BOLD, str);
+}
+
+// Memory allocation
+
+void *mem_alloc(usize size)
+{
+    void *result = malloc(size);
+    if (!result)
+    {
+        log_error("Memory allocation failed");
+        exit(1);
+    }
+    return result;
+}
+
+void *mem_resize(void *blk, usize size)
+{
+    void *result = realloc(blk, size);
+    if (!result)
+    {
+        log_error("Memory reallocation failed");
+        exit(1);
+    }
+    return result;
+}
+
+void mem_free(void *blk)
+{
+    if (blk)
+    {
+        free(blk);
+    }
 }
 
 // NOTE: func definition in ./frontend/include/lexer.hpp

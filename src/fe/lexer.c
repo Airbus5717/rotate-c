@@ -6,7 +6,7 @@ internal u8 lex_director(Lexer *);
 internal u8 lex_chars(Lexer *);
 internal u8 lex_numbers(Lexer *);
 internal u8 lex_strings(Lexer *);
-// internal u8 lex_multiline_strings(Lexer *);
+internal u8 lex_multiline_strings(Lexer *);
 internal u8 lex_binary_numbers(Lexer *);
 internal u8 lex_hex_numbers(Lexer *);
 internal u8 lex_symbols(Lexer *);
@@ -26,6 +26,13 @@ internal bool lex_is_not_eof(Lexer *);
 internal void lex_skip_whitespace(Lexer *);
 internal bool lex_keyword_match(Lexer *, cstr, uint);
 internal u8 lex_add_terminator(Lexer *);
+internal u8 lex_nested_comments(Lexer *);
+internal void log_lexer_state(Lexer *);
+
+// Constants
+#define MAX_IDENTIFIER_LENGTH 100
+#define MAX_NUMBER_LENGTH 100
+#define MAX_STRING_LENGTH (RUINT_MAX / 2)
 
 // Lexer API
 // file must not be null and l owns the file ptr
@@ -43,7 +50,7 @@ lexer_init(File *file)
     l.begin_tkn_line = 1;
     l.save_line      = 1;
     l.save_index     = 0;
-    l.tokens         = make_array(Token, file->length / 4);
+    l.tokens         = array_make(Token, file->length / 4);
     l.prev           = Tkn_EOT;
 
     ASSERT_NULL(l.tokens, "Lexer vec of tokens passed is a null pointer");
@@ -59,7 +66,7 @@ lexer_deinit(Lexer *l)
 void
 lexer_save_log(Lexer *l, FILE *output)
 {
-    array_foreach(l->tokens, el)
+    array_for_each(l->tokens, el)
     {
         log_token(output, *el, l->file->contents);
     }
@@ -70,7 +77,7 @@ lexer_lex(Lexer *l)
 {
     for (;;)
     {
-        u8 status = lex_director(l);
+        const u8 status = lex_director(l);
         switch (status)
         {
             case SUCCESS: break;
@@ -86,7 +93,7 @@ lexer_lex(Lexer *l)
     return FAILURE;
 }
 
-ArrayList(Token) lexer_get_tokens(Lexer *l)
+Array(Token) lexer_get_tokens(Lexer *l)
 {
     return l->tokens;
 }
@@ -269,7 +276,7 @@ lex_identifiers(Lexer *l)
         default: break;
     }
 
-    if (l->len > 100)
+    if (l->len > MAX_IDENTIFIER_LENGTH)
     {
         // log_error("identifier length is more than 128 chars");
         l->error = LE_TOO_LONG_IDENTIFIER;
@@ -309,7 +316,7 @@ lex_numbers(Lexer *l)
         }
     }
 
-    if (l->len > 100)
+    if (l->len > MAX_NUMBER_LENGTH)
     {
         log_error("number digits length is above 100");
         lex_restore_state_for_err(l);
@@ -388,10 +395,50 @@ lex_strings(Lexer *l)
     }
     lex_advance_len_inc(l);
 
-    if (l->len > (RUINT_MAX / 2))
+    if (l->len > MAX_STRING_LENGTH)
     {
         lex_restore_state_for_err(l);
-        log_error("A cstr is not allowed to be longer than (Uuint_MAX / 2)");
+        log_error("A cstr is not allowed to be longer than MAX_STRING_LENGTH");
+        l->error = LE_TOO_LONG_STRING;
+        return FAILURE;
+    }
+    l->index -= l->len;
+    return lex_add_token(l, Tkn_StringLiteral);
+}
+
+u8
+lex_multiline_strings(Lexer *l)
+{
+    lex_advance_len_inc(l);
+    for (;;)
+    {
+        if (lex_current(l) == '\0')
+        {
+            l->error = LE_NOT_CLOSED_STRING;
+            lex_restore_state_for_err(l);
+            return FAILURE;
+        }
+
+        if (lex_current(l) == '"')
+        {
+            if (lex_past(l) == '\\')
+            {
+                lex_advance_len_inc(l);
+                continue;
+            }
+            else
+            {
+                break;
+            }
+        }
+        lex_advance_len_inc(l);
+    }
+    lex_advance_len_inc(l);
+
+    if (l->len > MAX_STRING_LENGTH)
+    {
+        lex_restore_state_for_err(l);
+        log_error("A string is not allowed to be longer than MAX_STRING_LENGTH");
         l->error = LE_TOO_LONG_STRING;
         return FAILURE;
     }
@@ -539,21 +586,7 @@ lex_symbols(Lexer *l)
             }
             else if (p == '*')
             {
-                lex_advance(l); // skip '/'
-                lex_advance(l); // skip '*'
-
-                // TODO: Allow nested comments
-                bool end_comment = false;
-                while (lex_is_not_eof(l) && !end_comment)
-                {
-                    if (lex_current(l) == '*' && lex_peek(l) == '/')
-                    {
-                        lex_advance(l);
-                        end_comment = true;
-                    }
-                    lex_advance(l);
-                }
-                return SUCCESS;
+                return lex_nested_comments(l);
             }
             return lex_add_token(l, Tkn_DivOperator);
         }
@@ -671,54 +704,44 @@ lex_restore_state_for_err(Lexer *l)
 u8
 lex_report_error(Lexer *l)
 {
-    //
     uint low = l->index, col = 0;
-    const uint line  = l->line;
-    const uint len   = l->len;
+    const uint line = l->line;
+    const uint len = l->len;
     const uint index = l->index;
-    File *file       = l->file;
-    while (file->contents[low] != '\n' && low > 0)
-    {
+    File *file = l->file;
+
+    while (file->contents[low] != '\n' && low > 0) {
         low--;
         col++;
     }
     low = low > 1 ? low + 1 : 0;
 
-    //
     uint _length = l->index;
     while (file->contents[_length] != '\n' && _length + 1 < file->length)
         _length++;
 
     _length -= low;
 
-    // error msg
     fprintf(stderr, " > %s%s%s:%u:%u: %serror: %s%s%s\n", BOLD, WHITE, file->name, line, col, LRED,
             LBLUE, lexer_err_msg(l->error), RESET);
 
-    // line from source code
     fprintf(stderr, "  %s%u%s | %.*s\n", LYELLOW, line, RESET, _length, (file->contents + low));
 
     const uint num_line_digits = get_digits_from_number(line);
-
-    // arrows pointing to error location
     const uint spaces = index - low + 1;
 
     const uint MAX_ARROW_LEN = 101;
-    if (len < 101)
-    {
+    if (len < 101) {
         char arrows[MAX_ARROW_LEN];
         memset(arrows, 0, MAX_ARROW_LEN);
         memset(arrows, '^', len);
         arrows[len] = '\0';
 
-        fprintf(stderr, "  %*c |%*c%s%s%s\n", num_line_digits, ' ', spaces, ' ', LRED, BOLD,
-                arrows);
-    }
-    else
-    {
+        fprintf(stderr, "  %*c |%*c%s%s%s\n", num_line_digits, ' ', spaces, ' ', LRED, BOLD, arrows);
+    } else {
         fprintf(stderr, "  %*c |%*c%s%s^^^---...\n", num_line_digits, ' ', spaces, ' ', LRED, BOLD);
     }
-    // error lexer_err_advice
+
     fprintf(stderr, " > Advice: %s%s\n", RESET, lexer_err_advice(l->error));
     return FAILURE;
 }
@@ -741,4 +764,36 @@ lex_add_terminator(Lexer *l)
 
     lex_advance(l);
     return SUCCESS;
+}
+
+u8 lex_nested_comments(Lexer *l) {
+    lex_advance(l); // skip '/'
+    lex_advance(l); // skip '*'
+
+    int depth = 1;
+    while (lex_is_not_eof(l) && depth > 0) {
+        if (lex_current(l) == '*' && lex_peek(l) == '/') {
+            lex_advance(l);
+            depth--;
+        } else if (lex_current(l) == '/' && lex_peek(l) == '*') {
+            lex_advance(l);
+            depth++;
+        }
+        lex_advance(l);
+    }
+
+    if (depth > 0) {
+        l->error = LE_NOT_CLOSED_COMMENT;
+        lex_restore_state_for_err(l);
+        return FAILURE;
+    }
+
+    return SUCCESS;
+}
+
+// Adjusted log_debug call to format the string before passing it
+void log_lexer_state(Lexer *l) {
+    char buffer[128];
+    snprintf(buffer, sizeof(buffer), "Lexer state: index=%u, line=%u", l->index, l->line);
+    log_debug(buffer);
 }

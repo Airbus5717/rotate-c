@@ -14,8 +14,8 @@ log_compilation(FILE *output, File *code_file, Lexer *lexer)
     time(&rawtime);
     assert(code_file && lexer);
 
-    const ArrayList(Token) tokens = lexer->tokens;
-    if (array_len(tokens) > 0x100000)
+    const Array(Token) tokens = lexer->tokens;
+    if (array_length(tokens) > 0x100000)
     {
         log_warn("Too large file to show log");
         return;
@@ -38,7 +38,8 @@ log_compilation(FILE *output, File *code_file, Lexer *lexer)
     fprintf(output, "** TOKENS" NEWLINE);
     fprintf(output, "#+begin_src" NEWLINE);
     uint i = 0;
-    array_foreach(lexer->tokens, tkn)
+    Token tkn;
+    array_for_each(lexer->tokens, tkn)
     {
         fprintf(output, "[TOKEN]: n: %u, idx: %u, line: %u, len: %u, type: %s, val: `%.*s`" NEWLINE,
                 i, tkn->index, tkn->line, tkn->length, tkn_type_describe(tkn->type), tkn->length,

@@ -4,10 +4,13 @@
 
 C codebase version
 
-```cpp
-import "std/io" as io
 
-fn main() {
-     io.println("Hello, World")
+check `docs/docs.md`
+
+```go
+io :: import "std/io"
+
+main :: fn() {
+    io.println("Hello World")
 }
 ```

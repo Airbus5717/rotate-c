@@ -36,10 +36,15 @@ main(const int argc, char **const argv)
     // compile
     usize file_size = 0;
     compile_info_stats _exit = compile(&comp_opt);
-    if (_exit.status == FAILURE)
+
+    // Compile the input file and handle errors
+    if (_exit.status == FAILURE) {
         log_stage(main_err(comp_opt.st));
-    else if (_exit.status == SUCCESS)
-        log_info("SUCCESS");
+        fprintf(stderr, "Compilation failed at stage: %s\n", main_err(comp_opt.st));
+        return FAILURE;
+    } else if (_exit.status == SUCCESS) {
+        log_info("Compilation succeeded.");
+    }
 
     // print comptime
     end_t   = clock();

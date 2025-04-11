@@ -13,10 +13,10 @@ compile(compile_options *options)
     // Parser *parser;
     compile_info_stats exit = {0};
 
-    // Read file
+    // Stage 1: File Reading
     options->st = ST_FILE;
     File file = file_read(options->filename);
-    ASSERT_RET_FAIL(file.valid_code == success, "file read error");
+    ASSERT_RET_FAIL(file.valid_code == success, "File read error: Unable to read the file or invalid format");
     exit.file_size = file.length;
 
     /*
@@ -24,12 +24,13 @@ compile(compile_options *options)
      * LEXICAL ANALYSIS
      *
      * */
+    // Stage 2: Lexical Analysis
     options->st = ST_LEXER;
     Lexer lexer = lexer_init(&file);
     exit.status        = lexer_lex(&lexer);
     if (lexer_get_tokens(&lexer)->count < 2u) log_error("file is empty");
     if (exit.status == FAILURE) return exit;
-    exit.token_count = array_len(lexer.tokens);
+    exit.token_count = array_length(lexer.tokens);
     // parse lexed tokens to Abstract Syntax tree
 
     /*
@@ -37,6 +38,7 @@ compile(compile_options *options)
      * PARSING
      *
      * */
+    // Stage 3: Parsing (currently commented out)
     // options->st   = ST_PARSER;
     // Parser parser = Parser(&file, &lexer);
     // if (!options->lex_only)
@@ -46,6 +48,7 @@ compile(compile_options *options)
     // }
 
     // log compiliation
+    // Ensure consistent logging and memory management
     if (options->debug_info)
     {
         // LOGS ONLY DURING SUCCESS OF THE PREVIOUS STAGES
@@ -62,6 +65,7 @@ compile(compile_options *options)
         }
     }
 
+    // Free resources
     file_free(&file);
     lexer_deinit(&lexer);
 
