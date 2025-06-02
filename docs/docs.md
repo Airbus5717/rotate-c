@@ -1,6 +1,4 @@
-Below is an updated and unified Markdown document that reflects the latest Rotate language syntax. You can save this as your documentation file (e.g., `README.md`):
 
----
 
 # Rotate Programming Language Documentation
 
