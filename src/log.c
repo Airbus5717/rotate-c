@@ -61,36 +61,36 @@ log_compilation(FILE *output, File *code_file, Lexer *lexer, Parser *parser)
             switch (decl->kind) {
                 case AST_DECL_IMPORT:
                     if (decl->import.alias.length > 0) {
-                        fprintf(output, "[IMPORT]: n: %zu, alias: `%.*s`, module: `%.*s`" NEWLINE, 
-                               i, decl->import.alias.length, code_file->contents + decl->import.alias.index,
-                               decl->import.module_path.length, code_file->contents + decl->import.module_path.index);
+                        fprintf(output, "[IMPORT]: n: %llu, alias: `%.*s`, module: `%.*s`" NEWLINE, 
+                               i, (int)decl->import.alias.length, code_file->contents + decl->import.alias.index,
+                               (int)decl->import.module_path.length, code_file->contents + decl->import.module_path.index);
                     } else {
-                        fprintf(output, "[IMPORT]: n: %zu, module: `%.*s`" NEWLINE, 
-                               i, decl->import.module_path.length, code_file->contents + decl->import.module_path.index);
+                        fprintf(output, "[IMPORT]: n: %llu, module: `%.*s`" NEWLINE, 
+                               i, (int)decl->import.module_path.length, code_file->contents + decl->import.module_path.index);
                     }
                     break;
                 case AST_DECL_FUNCTION:
-                    fprintf(output, "[FUNCTION]: n: %zu, name: `%.*s`, params: %zu" NEWLINE, 
-                           i, decl->function.name.length, code_file->contents + decl->function.name.index,
+                    fprintf(output, "[FUNCTION]: n: %llu, name: `%.*s`, params: %llu" NEWLINE, 
+                           i, (int)decl->function.name.length, code_file->contents + decl->function.name.index,
                            array_count(decl->function.parameters));
                     break;
                 case AST_DECL_VARIABLE:
-                    fprintf(output, "[VARIABLE]: n: %zu, name: `%.*s`, constant: %s" NEWLINE, 
-                           i, decl->variable.name.length, code_file->contents + decl->variable.name.index,
+                    fprintf(output, "[VARIABLE]: n: %llu, name: `%.*s`, constant: %s" NEWLINE, 
+                           i, (int)decl->variable.name.length, code_file->contents + decl->variable.name.index,
                            decl->variable.is_constant ? "yes" : "no");
                     break;
                 case AST_DECL_STRUCT:
-                    fprintf(output, "[STRUCT]: n: %zu, name: `%.*s`, fields: %zu" NEWLINE, 
-                           i, decl->struct_decl.name.length, code_file->contents + decl->struct_decl.name.index,
+                    fprintf(output, "[STRUCT]: n: %llu, name: `%.*s`, fields: %llu" NEWLINE, 
+                           i, (int)decl->struct_decl.name.length, code_file->contents + decl->struct_decl.name.index,
                            array_count(decl->struct_decl.fields));
                     break;
                 case AST_DECL_ENUM:
-                    fprintf(output, "[ENUM]: n: %zu, name: `%.*s`, members: %zu" NEWLINE, 
-                           i, decl->enum_decl.name.length, code_file->contents + decl->enum_decl.name.index,
+                    fprintf(output, "[ENUM]: n: %llu, name: `%.*s`, members: %llu" NEWLINE, 
+                           i, (int)decl->enum_decl.name.length, code_file->contents + decl->enum_decl.name.index,
                            array_count(decl->enum_decl.members));
                     break;
                 default:
-                    fprintf(output, "[UNKNOWN_DECL]: n: %zu, kind: %d" NEWLINE, i, decl->kind);
+                    fprintf(output, "[UNKNOWN_DECL]: n: %llu, kind: %d" NEWLINE, i, decl->kind);
                     break;
             }
         }

@@ -17,18 +17,19 @@ The project uses a Makefile with Zig's C compiler (`zig cc`) as the default comp
 - `make run` - Build and run the compiler
 - `make clean` - Remove build artifacts
 
-Build outputs go to `build/` directory with the main executable at `build/main`.
+Build outputs go to `build/` directory with the main executable at `build/rotate` (changed from `build/main` in recent updates).
 
 ## Testing
 
 - Test files are located in `test/` directory with `.vr` extension
-- Run tests with the compiler: `./build/main test/001_hello.vr`
+- Run tests with the compiler: `./build/rotate test/001_hello.vr` or use `make test` to run all test files
+- Additional test targets: `make test-zig` for Zig unit tests
 - There's a Zig test file at `src/test.zig` - run with `zig test src/test.zig`
 
 ## Compiler Usage
 
 ```bash
-./build/main <source_file.vr> [options]
+./build/rotate <source_file.vr> [options]
 ```
 
 Available options:
@@ -45,32 +46,35 @@ The compiler follows a traditional multi-stage compilation process defined in `s
 
 1. **File Reading** (`ST_FILE`) - Read source file into memory
 2. **Lexical Analysis** (`ST_LEXER`) - Tokenize source code using `src/fe/lexer.c`
-3. **Parsing** (`ST_PARSER`) - Convert tokens to AST (currently commented out/incomplete)
+3. **Parsing** (`ST_PARSER`) - Convert tokens to AST (partially implemented, can be skipped with `--lex` flag)
 4. **Type Checking** (`ST_TCHECKER`) - Not yet implemented
 5. **Logging** (`ST_LOGGER`) - Optional debug output generation
 
 ### Key Components
 
 - **Frontend (`src/fe/`)**:
-  - `lexer.c/.h` - Tokenization engine with comprehensive token types
-  - `parser.c/.h` - AST generation (work in progress)
+  - `lexer.c/.h` - Complete tokenization engine with comprehensive token types
+  - `parser.c/.h` - AST generation (basic structure implemented, partially functional)
   - `token.c/.h` - Token definitions and utilities
-  - `type.c/.h` - Type system definitions
+  - `type.c/.h` - Type system definitions and AST node types
 
 - **Core Systems (`src/`)**:
-  - `main.c` - Entry point and command line parsing
-  - `compile.c` - Main compilation orchestration
-  - `file.c` - File I/O utilities
-  - `log.c` - Logging and debug output
+  - `main.c` - Entry point, command line parsing, timing, and error reporting
+  - `compile.c` - Main compilation orchestration with multi-stage pipeline
+  - `file.c` - File I/O utilities with error handling
+  - `log.c` - Logging and debug output with color-coded messages
 
 - **Utilities (`src/utl/`)**:
   - `common.c` - Shared utility functions
 
 - **Headers (`src/include/`)**:
-  - `defines.h` - Core type definitions, macros, platform detection
+  - `defines.h` - Core type definitions, macros, platform detection, and extensive assertion system
   - `common.h` - Shared function declarations
-  - `arraylist.h` - Generic dynamic array and slice system with macro-based implementation
+  - `arraylist.h` - Sophisticated generic dynamic array and slice system
   - `mem.h` - Memory management utilities
+  - `compile.h` - Compilation pipeline definitions
+  - `file.h` - File I/O function declarations
+  - `log.h` - Logging function declarations
 
 ### Token System
 
@@ -82,21 +86,28 @@ The lexer supports a comprehensive set of tokens defined in `src/fe/token.h`, in
 
 ### Language Features
 
-Based on the documentation and test files, Rotate supports:
-- Functions with type annotations
-- Variables (`:=`) and constants (`::`) with type inference
-- Control flow (if/else, loops, switch)
-- Structs and enums
-- Memory management with `new`/`delete` and `defer`
-- Import system for standard libraries
+Based on the test files and current implementation, Rotate supports:
+- **Functions** with type annotations (`fn(x: int, y: int) int`)
+- **Variables** (`:=`) and **constants** (`::`) with type inference
+- **Control flow**: if/else, while loops, for loops, switch statements
+- **Data structures**: structs with field access and array syntax
+- **Enums** for enumerated types
+- **Import system** for standard libraries (`io :: import "std/io"`)
+- **Memory management** with `new`/`delete` and `defer` (planned)
+- **Array types** with bracket notation (`[3]int`)
 
 ### Error Handling
 
 The codebase uses extensive assertion macros defined in `defines.h`:
-- `ASSERT(expr, msg)` - Runtime assertions
-- `ASSERT_RET_FAIL(expr, msg)` - Assertions that return failure status
-- `TODO(str)` - Mark unimplemented features
+- `ASSERT(expr, msg)` - Runtime assertions that exit on failure
+- `ASSERT_CMP(expr1, expr2, msg)` - Compare two expressions
+- `ASSERT_NULL(expr, msg)` - Check for null pointers
+- `STR_ASSERT(string1, string2, msg)` - String comparison assertions
+- `ASSERT_RET_FAIL(expr, msg)` - Assertions that return failure status instead of exiting
+- `TODO(str)` - Mark unimplemented features with yellow warning
 - `UNREACHABLE()` - Mark code paths that should never execute
+- `expect(expr, doWhenExpected, doElse)` - Conditional execution macro
+- Color-coded error messages using terminal color codes
 
 ### Array and Memory Management System
 
@@ -150,10 +161,12 @@ file_read(cstr name)
 - Use `cstr` typedef for const char* consistently
 
 ### Custom Type System
-- **Extensive typedef usage**: `u8`, `u16`, `u32`, `u64`, `i8`, `i16`, `i32`, `i64`
-- **Float types**: `f32`, `f64`, `f128` (platform-dependent)
-- **Size types**: `usize`, `isize` (64-bit aligned)
+- **Extensive typedef usage**: `u8`, `u16`, `u32`, `u64`, `i8`, `i16`, `i32`, `i64` with compile-time size validation
+- **Float types**: `f32`, `f64`, `f128` (f128 is platform-dependent, warned as hardware-dependent)
+- **Size types**: `usize`, `isize` (both 64-bit aligned, equivalent to u64/i64)
 - **Convenience types**: `cstr` for const char*, `uint` for u32
+- **Status codes**: `SUCCESS` (0), `FAILURE` (1), `DONE` (2)
+- **Project constants**: `RTVERSION` ("0.0.1"), `RUINT_MAX`, `EXTRA_NULL_TERMINATORS`
 
 ### Macro-Heavy Architecture
 - **Generic arrays**: Use `generate_array_type(T)` to create type-specific `Array(T)` and `Slice(T)`
@@ -206,9 +219,80 @@ file_read(cstr name)
 - The project uses C11 standard with GNU extensions
 - Cross-platform support for Linux, macOS, and Windows
 - Extensive compiler warnings enabled for code quality
-- Parser implementation is currently incomplete (commented out in `compile.c:42-48`)
+- Parser implementation is partially complete and functional (see `src/fe/parser.c/.h`)
+- Parser can be bypassed with `--lex` flag for lexer-only operation
+- AST node types are defined but full parsing is still in development
 - Version is defined as `RTVERSION "0.0.1"` in `defines.h`
 
-## Project Milestones
+## Current Implementation Status
 
-- The lexer is complete, and single file read
+### ✅ Completed Features
+- **Lexer**: Complete tokenization with comprehensive token support
+- **File I/O**: Robust file reading with error handling
+- **CLI Interface**: Command-line argument parsing with multiple options
+- **Build System**: Advanced Makefile with multiple build targets and tooling
+- **Error Handling**: Comprehensive assertion and logging system
+- **Memory Management**: Generic array/slice system with type safety
+- **Testing**: Framework for running .vr test files
+- **Cross-platform**: Support for Linux, macOS, and Windows
+
+### 🚧 In Progress
+- **Parser**: Basic AST structure implemented, parsing logic partially complete
+- **Type System**: AST node definitions present, semantic analysis not implemented
+
+### ❌ Not Implemented
+- **Type Checker**: Semantic analysis stage
+- **Code Generation**: Backend compilation to machine code
+- **Standard Library**: Runtime library functions
+- **Advanced Features**: Pattern matching, advanced memory management
+
+## Test Coverage
+
+The `test/` directory contains comprehensive test cases:
+- `000_empty.vr` - Empty file handling
+- `001_hello.vr` - Basic "Hello World" with imports
+- `002_var.vr` - Variable declarations
+- `003_comments.vr` - Comment parsing
+- `004_func.vr` - Function definitions with parameters and return types
+- `005_for_loop.vr` - For loop constructs
+- `006_if.vr` - Conditional statements
+- `007_while.vr` - While loop constructs
+- `008_switch.vr` - Switch/case statements
+- `009_struct.vr` - Struct definitions and field access
+- `010_enum.vr` - Enumeration types
+- `011_memory.vr` - Memory management constructs
+
+## Build System Details
+
+The Makefile has been significantly enhanced and now includes:
+
+### New Build Targets
+- `make help` - Display comprehensive help with examples
+- `make test` - Run all .vr test files through the compiler
+- `make test-zig` - Run Zig unit tests if present
+- `make format` - Format code using clang-format (if available)
+- `make check` - Run static analysis using cppcheck (if available)
+- `make install` - Install binary to system (default: /usr/local/bin)
+- `make uninstall` - Remove installed binary
+
+### Build Improvements
+- **Dependency tracking**: Automatic .d file generation for incremental builds
+- **Color output**: Visual feedback during compilation with colored status messages
+- **Better error handling**: Robust cross-platform commands and error checking
+- **Performance options**: LTO (Link Time Optimization) in release builds
+- **Enhanced debugging**: Address sanitizer and undefined behavior sanitizer in debug builds
+
+### Usage Examples
+```bash
+# Build and run with arguments
+make run ARGS="test/001_hello.vr --lex --timer"
+
+# Install to custom location
+make install INSTALL_PREFIX=/opt/rotate
+
+# Debug build with sanitizers
+make debug
+
+# Static analysis and formatting
+make check format
+```
