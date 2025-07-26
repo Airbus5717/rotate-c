@@ -1,10 +1,11 @@
 io :: import "std/io"
 
 add :: fn(x: int, y: int) int {
-    ret x + y
+    return x + y
 }
 
 main :: fn() {
-    io.print_i(add(1, 2))
+    result := add(5, 7)
+    io.print_i(result)  // Output should be 12
     io.println("")
 }

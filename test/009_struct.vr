@@ -1,0 +1,11 @@
+Token :: struct {
+    id: int,
+    data: [3]int,
+}
+
+main :: fn() {
+    t := Token{ 1, [10, 20, 30] }
+    t.id = 2
+    t.data[1] = 99
+    // Use t as needed
+}

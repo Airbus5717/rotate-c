@@ -2,9 +2,9 @@ io :: import "std/io"
 
 main :: fn() {
     x := 1
-    if (x == 1) {
-      println("x is 1")
+    if x == 1 {
+        io.println("x is 1")
     } else {
-      println("x is not 1")
+        io.println("x is not 1")
     }
 }

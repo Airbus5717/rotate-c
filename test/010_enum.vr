@@ -1,0 +1,13 @@
+TknType :: enum {
+    Id,
+    Number,
+    Float,
+    String,
+    Char,
+    Invalid,
+}
+
+main :: fn() {
+    currentType :: TknType::Id
+    // Further processing based on currentType
+}

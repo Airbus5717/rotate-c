@@ -1,0 +1,7 @@
+main :: fn() {
+    condition := true
+    while condition {
+        // Loop body
+        condition = false  // Terminate loop after one iteration
+    }
+}

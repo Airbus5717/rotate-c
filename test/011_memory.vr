@@ -1,0 +1,17 @@
+io :: import "std/io"
+os :: import "std/os"
+
+main :: fn() {
+    buffer := new [3]char
+    defer delete buffer
+
+    nums := new [100]int
+    defer delete nums
+
+    if nums == nil {
+        io.println("Allocation failed")
+        os.exit(1)
+    }
+    
+    // Process buffer and nums as needed
+}

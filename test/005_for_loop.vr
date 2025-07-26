@@ -1,0 +1,5 @@
+main :: fn() {
+    for i in 0..3 {
+        // Loop body: i takes on values 0, 1, 2
+    }
+}

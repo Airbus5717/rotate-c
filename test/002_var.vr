@@ -1,12 +1,13 @@
 io :: import "std/io"
 
-fn main() {
-	let x := 1 // inferred variable
-	let y :: 2 // inferred constant
-	let z :int = 1 // int variable
-	io.print_i(x)
-	io.print_i(y)
-	io.print_i(z)
-	io.println("")
+main :: fn() {
+    a := 1         // Inferred variable
+    b :: 2         // Inferred constant
+    c :int = 3     // Integer variable with explicit type
+
+    io.print_i(a)
+    io.print_i(b)
+    io.print_i(c)
+    io.println("") // Print newline
 }
 

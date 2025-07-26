@@ -1,7 +1,7 @@
 .PHONY: all clean
 
 # Compiler
-CC := zig cc 
+CC := clang
 CFLAGS = -std=gnu11 -Wall -Wextra -Wpedantic -ffast-math -Wno-unused -lm
 CFLAGS += -finline-functions -fno-strict-aliasing -funroll-loops
 CFLAGS += -march=native -mtune=native -Wwrite-strings -fno-exceptions
@@ -43,12 +43,13 @@ else
     endif
 endif
 
-# Ensure the build directory exists before compiling
-$(BUILD_DIR):
-	@mkdir -p $(BUILD_DIR)
 
 # Default target
 all: $(BUILD_DIR) release
+
+# Ensure the build directory exists before compiling
+$(BUILD_DIR):
+	@mkdir -p $(BUILD_DIR)
 
 # Release build
 debug: CFLAGS += $(CFLAGS_DEBUG)

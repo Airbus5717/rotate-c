@@ -38,14 +38,14 @@ compile(compile_options *options)
      * PARSING
      *
      * */
-    // Stage 3: Parsing (currently commented out)
-    // options->st   = ST_PARSER;
-    // Parser parser = Parser(&file, &lexer);
-    // if (!options->lex_only)
-    // {
-    //     exit = parser.parse_lexer();
-    //     ASSERT_RET_FAIL(exit != FAILURE, "Parser error");
-    // }
+    // Stage 3: Parsing
+    options->st = ST_PARSER;
+    Parser parser = parser_init(&lexer);
+    if (!options->lex_only)
+    {
+        exit.status = parser_parse(&parser);
+        ASSERT_RET_FAIL(exit.status != FAILURE, "Parser error");
+    }
 
     // log compiliation
     // Ensure consistent logging and memory management
@@ -56,7 +56,7 @@ compile(compile_options *options)
         FILE *output = fopen("output.org", "wb");
         if (output)
         {
-            log_compilation(output, &file, &lexer);
+            log_compilation(output, &file, &lexer, &parser);
             fclose(output);
         }
         else
@@ -68,6 +68,7 @@ compile(compile_options *options)
     // Free resources
     file_free(&file);
     lexer_deinit(&lexer);
+    parser_deinit(&parser);
 
     return exit;
 }

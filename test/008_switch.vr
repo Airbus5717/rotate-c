@@ -1,0 +1,16 @@
+io :: import "std/io"
+
+main :: fn() {
+    value :: 1
+    switch value {
+        1: {
+            io.println("Value is 1")
+        }
+        2: {
+            io.println("Value is 2")
+        }
+        else: {
+            io.println("Value is unknown")
+        }
+    }
+}
