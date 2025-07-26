@@ -167,7 +167,7 @@ print_version_and_exit(void)
     cstr out = " Rotate Compiler \n Version: %s\n"
                " --lex   for lexical analysis\n"
                " --log   for dumping compilation info as orgmode format in output.org\n"
-               " https://codeberg.org/Airbus5717/rotate"
+               " https://github.com/Airbus5717/rotate-c"
                "\n";
     fprintf(stdout, out, RTVERSION);
     exit(0);

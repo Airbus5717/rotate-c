@@ -8,7 +8,7 @@ Rotate is a programming language compiler written in C that compiles source file
 
 ## Build Commands
 
-The project uses a Makefile with Zig's C compiler (`zig cc`) as the default compiler:
+The project uses a Makefile with clang compiler (`clang`) as the default compiler:
 
 - `make` or `make all` - Build release version (optimized)
 - `make debug` - Build debug version with symbols and debugging info

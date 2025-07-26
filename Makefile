@@ -10,7 +10,8 @@ VERSION = 0.0.1
 
 # Compiler Configuration
 CC := clang 
-CFLAGS = -std=gnu11 -Wall -Wextra -Wpedantic -ffast-math -Wno-unused -lm
+CFLAGS = -std=gnu11 -Wall -Wextra -Wpedantic -ffast-math -Wno-unused
+LDFLAGS = -lm
 CFLAGS += -finline-functions -fno-strict-aliasing -funroll-loops
 CFLAGS += -march=native -mtune=native -Wwrite-strings -fno-exceptions
 CFLAGS += -Wshadow -Wundef -Wcast-align -Wstrict-prototypes
@@ -18,7 +19,7 @@ CFLAGS += -Wold-style-definition -Wmissing-prototypes -Wmissing-declarations
 
 # Build Configuration
 CFLAGS_RELEASE = -O3 -DNDEBUG -flto
-CFLAGS_DEBUG = -g -O0 -DDEBUG -fsanitize=address -fsanitize=undefined
+CFLAGS_DEBUG = -g -O1 -DDEBUG -fsanitize=address -fsanitize=undefined
 CFLAGS_SAFE = -fsanitize=address -fsanitize=undefined -fstack-protector-strong -D_FORTIFY_SOURCE=2
 
 # Directories
@@ -28,7 +29,7 @@ TEST_DIR = test
 INSTALL_PREFIX ?= /usr/local
 
 # Source Files
-SRC = $(shell find $(SRC_DIR) -name '*.c' 2>/dev/null)
+SRC = $(shell find $(SRC_DIR) -name '*.c' -type f)
 OBJ = $(patsubst $(SRC_DIR)/%.c, $(BUILD_DIR)/%.o, $(SRC))
 DEPS = $(OBJ:.o=.d)
 
@@ -39,11 +40,16 @@ TEST_FILES = $(wildcard $(TEST_DIR)/*.vr)
 # Platform Detection and Configuration
 ifeq ($(OS),Windows_NT)
     TARGET := $(TARGET).exe
-    CC := x86_64-w64-mingw32-gcc
-    RM := del /Q /S
-    MKDIR := mkdir
+    ifeq ($(shell which x86_64-w64-mingw32-gcc 2>/dev/null),)
+        CC := gcc
+    else
+        CC := x86_64-w64-mingw32-gcc
+    endif
+    RM := if exist build rmdir /s /q build
+    MKDIR := if not exist
     PATHSEP := \\
     CFLAGS += -DOS_WIN
+    LDFLAGS += -lmsvcrt
 else
     UNAME_S := $(shell uname -s)
     RM := rm -rf
@@ -65,16 +71,16 @@ BLUE := \033[34m
 RED := \033[31m
 
 # Build Targets
-all: release
-	@printf "$(GREEN)✓ Build completed successfully$(NO_COLOR)\n"
+# all: debug 
+# 	@printf "$(GREEN)✓ Build completed successfully$(NO_COLOR)\n"
+debug: CFLAGS += $(CFLAGS_DEBUG)
+debug: $(TARGET)
+	@printf "$(YELLOW)✓ Debug build complete$(NO_COLOR)\n"
 
 release: CFLAGS += $(CFLAGS_RELEASE)
 release: $(TARGET)
 	@printf "$(GREEN)✓ Release build complete$(NO_COLOR)\n"
 
-debug: CFLAGS += $(CFLAGS_DEBUG)
-debug: $(TARGET)
-	@printf "$(YELLOW)✓ Debug build complete$(NO_COLOR)\n"
 
 safe: CFLAGS += $(CFLAGS_SAFE)
 safe: $(TARGET)
@@ -82,26 +88,26 @@ safe: $(TARGET)
 
 # Dependency Generation
 $(BUILD_DIR)/%.d: $(SRC_DIR)/%.c | $(BUILD_DIR)
-	@$(MKDIR) $(dir $@)
-	@$(CC) $(CFLAGS) -MM -MT $(@:.d=.o) $< > $@
+	@$(MKDIR) $(dir $@) 2>/dev/null || true
+	@$(CC) $(CFLAGS) -MM -MT $(@:.d=.o) $< > $@ 2>/dev/null || true
 
 # Object File Compilation
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.c $(BUILD_DIR)/%.d | $(BUILD_DIR)
-	@$(MKDIR) $(dir $@)
+	@$(MKDIR) $(dir $@) 2>/dev/null || true
 	@printf "$(BLUE)Compiling$(NO_COLOR) %s\n" "$<"
-	@$(CC) $(CFLAGS) -c $< -o $@
+	@$(CC) $(CFLAGS) -c $< -o $@ || (printf "$(RED)Error compiling $<$(NO_COLOR)\n" && exit 1)
 
 # Executable Linking
 $(TARGET): $(OBJ) | $(BUILD_DIR)
 	@printf "$(YELLOW)Linking$(NO_COLOR) %s\n" "$@"
-	@$(CC) $(CFLAGS) -o $@ $(OBJ)
+	@$(CC) $(CFLAGS) -o $@ $(OBJ) $(LDFLAGS) || (printf "$(RED)Error linking $@$(NO_COLOR)\n" && exit 1)
 
 # Directory Creation
 $(BUILD_DIR):
-	@$(MKDIR) $(BUILD_DIR)
+	@$(MKDIR) $(BUILD_DIR) 2>/dev/null || true
 
 # Test Execution
-test: $(TARGET)
+test: debug $(TARGET) 
 	@printf "$(BLUE)Running tests...$(NO_COLOR)\n"
 	@if [ -d "$(TEST_DIR)" ]; then \
 		passed=0; failed=0; total=0; \
