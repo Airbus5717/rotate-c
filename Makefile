@@ -104,10 +104,26 @@ $(BUILD_DIR):
 test: $(TARGET)
 	@printf "$(BLUE)Running tests...$(NO_COLOR)\n"
 	@if [ -d "$(TEST_DIR)" ]; then \
+		passed=0; failed=0; total=0; \
 		for test_file in $(TEST_FILES); do \
-			echo "Testing $$test_file"; \
-			./$(TARGET) $$test_file; \
+			total=$$((total + 1)); \
+			printf "Testing $$(basename $$test_file)... "; \
+			if ./$(TARGET) $$test_file >/dev/null 2>&1; then \
+				printf "$(GREEN)PASS$(NO_COLOR)\n"; \
+				passed=$$((passed + 1)); \
+			else \
+				printf "$(RED)FAIL$(NO_COLOR)\n"; \
+				failed=$$((failed + 1)); \
+			fi; \
 		done; \
+		echo "========================================"; \
+		printf "Total: $$total  $(GREEN)Passed: $$passed$(NO_COLOR)  $(RED)Failed: $$failed$(NO_COLOR)\n"; \
+		if [ $$failed -eq 0 ]; then \
+			printf "$(GREEN)All tests passed!$(NO_COLOR)\n"; \
+		else \
+			printf "$(RED)Some tests failed.$(NO_COLOR)\n"; \
+			exit 1; \
+		fi; \
 	else \
 		printf "$(YELLOW)No test directory found$(NO_COLOR)\n"; \
 	fi
