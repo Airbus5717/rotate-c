@@ -1,115 +1,161 @@
 #include "include/compile.h"
 #include "include/common.h"
 #include "include/file.h"
-
 #include "include/log.h"
 
 #include "fe/parser.h"
 
-compile_info_stats 
+#define MIN_TOKEN_COUNT 2u
+#define OUTPUT_LOG_FILE "output.org"
+
+internal u8
+compile_file_stage(compile_options *options, File *file)
+{
+    options->st = ST_FILE;
+    File temp_file = file_read(options->filename);
+    ASSERT_RET_FAIL(temp_file.valid_code == success, "File read error: Unable to read the file or invalid format");
+    memcpy(file, &temp_file, sizeof(File));
+    return SUCCESS;
+}
+
+internal u8
+compile_lexer_stage(compile_options *options, File *file, Lexer *lexer, compile_info_stats *stats)
+{
+    options->st = ST_LEXER;
+    *lexer = lexer_init(file);
+    u8 status = lexer_lex(lexer);
+
+    if (lexer_get_tokens(lexer)->count < MIN_TOKEN_COUNT) {
+        log_error("file is empty");
+    }
+
+    if (status == FAILURE) {
+        return FAILURE;
+    }
+
+    stats->token_count = array_length(lexer->tokens);
+    return SUCCESS;
+}
+
+internal u8
+compile_parser_stage(compile_options *options, Lexer *lexer, Parser *parser)
+{
+    options->st = ST_PARSER;
+    *parser = parser_init(lexer);
+
+    if (!options->lex_only) {
+        u8 status = parser_parse(parser);
+        ASSERT_RET_FAIL(status != FAILURE, "Parser error");
+        return status;
+    }
+
+    return SUCCESS;
+}
+
+internal u8
+compile_logger_stage(compile_options *options, File *file, Lexer *lexer, Parser *parser)
+{
+    if (!options->debug_info) {
+        return SUCCESS;
+    }
+
+    options->st = ST_LOGGER;
+    FILE *output = fopen(OUTPUT_LOG_FILE, "wb");
+    if (!output) {
+        log_error("Failed to create log file: " OUTPUT_LOG_FILE);
+        return FAILURE;
+    }
+
+    log_compilation(output, file, lexer, parser);
+    fclose(output);
+    return SUCCESS;
+}
+
+compile_info_stats
 compile(compile_options *options)
 {
-
-    // Parser *parser;
-    compile_info_stats exit = {0};
+    compile_info_stats exit_stats = {0};
+    File file = {0};
+    Lexer lexer = {0};
+    Parser parser = {0};
 
     // Stage 1: File Reading
-    options->st = ST_FILE;
-    File file = file_read(options->filename);
-    ASSERT_RET_FAIL(file.valid_code == success, "File read error: Unable to read the file or invalid format");
-    exit.file_size = file.length;
+    if (compile_file_stage(options, &file) == FAILURE) {
+        exit_stats.status = FAILURE;
+        return exit_stats;
+    }
+    exit_stats.file_size = file.length;
 
-    /*
-     *
-     * LEXICAL ANALYSIS
-     *
-     * */
     // Stage 2: Lexical Analysis
-    options->st = ST_LEXER;
-    Lexer lexer = lexer_init(&file);
-    exit.status        = lexer_lex(&lexer);
-    if (lexer_get_tokens(&lexer)->count < 2u) log_error("file is empty");
-    if (exit.status == FAILURE) return exit;
-    exit.token_count = array_length(lexer.tokens);
-    // parse lexed tokens to Abstract Syntax tree
+    if (compile_lexer_stage(options, &file, &lexer, &exit_stats) == FAILURE) {
+        exit_stats.status = FAILURE;
+        goto cleanup;
+    }
 
-    /*
-     *
-     * PARSING
-     *
-     * */
     // Stage 3: Parsing
-    options->st = ST_PARSER;
-    Parser parser = parser_init(&lexer);
-    if (!options->lex_only)
-    {
-        exit.status = parser_parse(&parser);
-        ASSERT_RET_FAIL(exit.status != FAILURE, "Parser error");
+    if (compile_parser_stage(options, &lexer, &parser) == FAILURE) {
+        exit_stats.status = FAILURE;
+        goto cleanup;
     }
 
-    // log compiliation
-    // Ensure consistent logging and memory management
-    if (options->debug_info)
-    {
-        // LOGS ONLY DURING SUCCESS OF THE PREVIOUS STAGES
-        options->st  = ST_LOGGER;
-        FILE *output = fopen("output.org", "wb");
-        if (output)
-        {
-            log_compilation(output, &file, &lexer, &parser);
-            fclose(output);
-        }
-        else
-        {
-            log_error("Failed to log to output.org");
-        }
+    // Stage 4: Logging (if requested)
+    if (compile_logger_stage(options, &file, &lexer, &parser) == FAILURE) {
+        exit_stats.status = FAILURE;
+        goto cleanup;
     }
 
+    exit_stats.status = SUCCESS;
+
+cleanup:
     // Free resources
     file_free(&file);
     lexer_deinit(&lexer);
     parser_deinit(&parser);
 
-    return exit;
+    return exit_stats;
+}
+
+internal void
+init_compile_options(compile_options *co, const i32 argc, i8 **argv)
+{
+    co->argc          = argc;
+    co->argv          = argv;
+    co->debug_info    = false;
+    co->debug_symbols = false;
+    co->timer         = false;
+    co->lex_only      = false;
+    co->st            = ST_UNKNOWN;
+    co->filename      = argv[1];
+}
+
+internal void
+parse_compile_argument(compile_options *co, cstr arg)
+{
+    if (strcmp(arg, "--log") == 0) {
+        co->debug_info = true;
+    }
+    else if (!strcmp(arg, "--version") || !strcmp(arg, "-v")) {
+        print_version_and_exit();
+    }
+    else if (strcmp(arg, "--timer") == 0) {
+        co->timer = true;
+    }
+    else if (strcmp(arg, "--lex") == 0) {
+        co->lex_only = true;
+    }
+    else {
+        log_error_unknown_flag(arg);
+    }
 }
 
 compile_options
 compile_options_new(const i32 argc, i8 **argv)
 {
     compile_options co;
-    co.argc          = argc;
-    co.argv          = argv;
-    co.debug_info    = false;
-    co.debug_symbols = false;
-    co.timer         = false;
-    co.lex_only      = false;
-    co.st            = ST_UNKNOWN;
+    init_compile_options(&co, argc, argv);
 
-    co.filename = argv[1];
-    for (i32 i = 2; i < argc; i++)
-    {
-        cstr arg = argv[i];
-
-        if (strcmp(arg, "--log") == 0)
-        {
-            co.debug_info = true;
-        }
-        else if (!strcmp(arg, "--version") || !strcmp(arg, "-v"))
-        {
-            print_version_and_exit();
-        }
-        else if (strcmp(arg, "--timer") == 0)
-        {
-            co.timer = true;
-        }
-        else if (strcmp(arg, "--lex") == 0)
-        {
-            co.lex_only = true;
-        }
-        else
-        {
-            log_error_unknown_flag(arg);
-        }
+    for (i32 i = 2; i < argc; i++) {
+        parse_compile_argument(&co, argv[i]);
     }
 
     return co;

@@ -1,8 +1,8 @@
 #include "include/common.h"
 #include "include/compile.h"
 
-cstr
-main_err(Stage s)
+internal cstr
+stage_to_string(Stage s)
 {
     switch (s)
     {
@@ -13,7 +13,15 @@ main_err(Stage s)
         case ST_LOGGER: return "LOGGER";
         default: return "UNKNOWN";
     }
-    return "UNKNOWN";
+}
+
+internal void
+print_compilation_stats(compile_info_stats stats, f128 total_time)
+{
+    printf("[%sINFO%s] : %d Tokens\n", LMAGENTA BOLD, RESET, stats.token_count);
+    printf("[%sRATE%s] : %.3Lf mb/sec\n", LMAGENTA BOLD, RESET,
+           (stats.file_size/(1024*1024))/total_time);
+    printf("[%sTIME%s] : %.5Lf sec\n", LMAGENTA BOLD, RESET, total_time);
 }
 
 int
@@ -28,30 +36,26 @@ main(const int argc, char **const argv)
     // parse program arguments
     compile_options comp_opt = compile_options_new(argc, argv);
 
-    // setup timer stuff
-    clock_t start_t, end_t;
-    f128 total_t;
-    start_t = clock();
-
+    // setup timer
+    clock_t start_time = clock();
+    
     // compile
-    usize file_size = 0;
-    compile_info_stats _exit = compile(&comp_opt);
+    compile_info_stats exit_stats = compile(&comp_opt);
 
-    // Compile the input file and handle errors
-    if (_exit.status == FAILURE) {
-        log_stage(main_err(comp_opt.st));
-        fprintf(stderr, "Compilation failed at stage: %s\n", main_err(comp_opt.st));
+    // handle compilation results
+    if (exit_stats.status == FAILURE) {
+        log_stage(stage_to_string(comp_opt.st));
+        fprintf(stderr, "Compilation failed at stage: %s\n", stage_to_string(comp_opt.st));
         return FAILURE;
-    } else if (_exit.status == SUCCESS) {
+    } else if (exit_stats.status == SUCCESS) {
         log_info("Compilation succeeded.");
     }
 
-    // print comptime
-    end_t   = clock();
-    total_t = (f64)(end_t - start_t) / CLOCKS_PER_SEC;
-    printf("[%sINFO%s] : %d Tokens\n", LMAGENTA BOLD, RESET, _exit.token_count);
-    printf("[%sRATE%s] : %.3Lf mb/sec\n", LMAGENTA BOLD, RESET,
-		    (_exit.file_size/(1024*1024))/total_t);
-    printf("[%sTIME%s] : %.5Lf sec\n", LMAGENTA BOLD, RESET, total_t);
+    // print compilation statistics
+    if (comp_opt.timer) {
+        clock_t end_time = clock();
+        f128 total_time = (f64)(end_time - start_time) / CLOCKS_PER_SEC;
+        print_compilation_stats(exit_stats, total_time);
+    }
     return SUCCESS;
 }

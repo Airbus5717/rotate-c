@@ -36,4 +36,4 @@ uint get_digits_from_number(const uint);
 // bitwise operations
 u8 bit_set(const u8 field, const u8 n);
 u8 bit_clear(const u8 field, const u8 n);
-u8 bit_is_set(const u8 field, const u8 n);
+bool bit_is_set(const u8 field, const u8 n);

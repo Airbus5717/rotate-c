@@ -1,13 +1,16 @@
 #include "../include/common.h"
 #include "../fe/token.h"
-#include <time.h> // For timestamps in logging
+#include <time.h>
+#include <math.h>
 
-// Centralized logging function
-static void log_message(const char *level, const char *color, cstr message)
+#define TIME_BUFFER_SIZE 20
+
+internal void 
+log_message(const char *level, const char *color, cstr message)
 {
     time_t now = time(NULL);
     struct tm *t = localtime(&now);
-    char time_buffer[20];
+    char time_buffer[TIME_BUFFER_SIZE];
     strftime(time_buffer, sizeof(time_buffer), "%Y-%m-%d %H:%M:%S", t);
 
     fprintf(stderr, "[%s%s%s] [%s]: %s\n", color, level, RESET, time_buffer, message);
@@ -97,12 +100,13 @@ log_error_unknown_flag(cstr str)
 char *
 string_dup(cstr src, const usize length)
 {
-    char *res = malloc(length);
-    ASSERT_NULL(res, "failed mem allocation");
-    for (usize i = 0; i < length; ++i)
-    {
-        res[i] = src[i];
+    if (!src || length == 0) {
+        return NULL;
     }
+    
+    char *res = mem_alloc(length + 1);
+    memcpy(res, src, length);
+    res[length] = '\0';
     return res;
 }
 
@@ -116,29 +120,35 @@ string_cmp(cstr restrict a, cstr restrict b)
 uint
 get_digits_from_number(const uint num)
 {
-    // TODO: Test this algorithm
+    if (num == 0) {
+        return 1;
+    }
     return (uint)floor(log10l(num) + 1);
 }
 
 u8
 bit_set(const u8 field, const u8 n)
 {
-    // NOTE(5717): n should be [1:8],
-    // otherwise it is ignored
+    if (n >= 8) {
+        return field;
+    }
     return (field | (u8)((u8)1 << n));
 }
 
 u8
 bit_clear(const u8 field, const u8 n)
 {
-    // NOTE(5717): n should be [1:8]
-    // otherwise it is ignored
+    if (n >= 8) {
+        return field;
+    }
     return (field & (u8)(~((u8)1 << n)));
 }
 
-u8
+bool
 bit_is_set(const u8 field, const u8 n)
 {
-    // NOTE(5717): returns non zero for true else 0 for false
-    return ((field >> n) & 1);
+    if (n >= 8) {
+        return false;
+    }
+    return (((field >> n) & 1) != 0);
 }
