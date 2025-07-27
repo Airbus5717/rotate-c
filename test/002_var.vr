@@ -1,4 +1,4 @@
-io :: import "std/io"
+io :: import "std/io";
 
 main :: fn() {
     a := 1         // Inferred variable

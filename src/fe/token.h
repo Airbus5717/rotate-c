@@ -44,12 +44,14 @@ typedef enum
     Tkn_IfKeyword,        // 'if'
     Tkn_ElseKeyword,      // 'else'
     Tkn_ForKeyword,       // 'for'
+    Tkn_InKeyword,        // 'in'
     Tkn_WhileKeyword,     // 'while'
     Tkn_Greater,          // >
     Tkn_GreaterEql,       // >=
     Tkn_Less,             // <
     Tkn_LessEql,          // <=
     Tkn_Dot,              // .
+    Tkn_DotDot,           // ..
     Tkn_Mod,              // %
     Tkn_Not,              // "!"
     Tkn_NotEqual,         // "!="

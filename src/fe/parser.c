@@ -110,6 +110,16 @@ skip_terminators(Parser *p)
         // Skip newlines and semicolons
     }
 }
+
+// Error setting helper
+inline internal void
+set_parser_error(Parser *p, ParseErr error)
+{
+    p->error = error;
+    Token curr = current(p);
+    p->error_line = curr.line;
+    p->error_col = curr.index + 1; // Convert to 1-based column numbering
+}
 /*
  *
  * AST Creation Functions
@@ -119,6 +129,7 @@ AstProgram *
 ast_program_create(void)
 {
     AstProgram *program = mem_alloc(sizeof(AstProgram));
+    memset(program, 0, sizeof(AstProgram));
     program->declarations = array_make(AstDeclPtr, 8);
     return program;
 }
@@ -127,6 +138,7 @@ AstDecl *
 ast_decl_create(AstNodeType kind, Token token)
 {
     AstDecl *decl = mem_alloc(sizeof(AstDecl));
+    memset(decl, 0, sizeof(AstDecl));
     decl->kind = kind;
     decl->token = token;
     return decl;
@@ -136,6 +148,7 @@ AstStmt *
 ast_stmt_create(AstNodeType kind, Token token)
 {
     AstStmt *stmt = mem_alloc(sizeof(AstStmt));
+    memset(stmt, 0, sizeof(AstStmt));
     stmt->kind = kind;
     stmt->token = token;
     return stmt;
@@ -145,6 +158,7 @@ AstExpr *
 ast_expr_create(AstNodeType kind, Token token)
 {
     AstExpr *expr = mem_alloc(sizeof(AstExpr));
+    memset(expr, 0, sizeof(AstExpr));
     expr->kind = kind;
     expr->token = token;
     expr->type = nullptr;
@@ -155,6 +169,7 @@ AstType *
 ast_type_create(AstNodeType kind, Token token)
 {
     AstType *type = mem_alloc(sizeof(AstType));
+    memset(type, 0, sizeof(AstType));
     type->kind = kind;
     type->token = token;
     return type;
@@ -207,6 +222,9 @@ ast_stmt_free(AstStmt *stmt)
         case AST_STMT_EXPR:
             ast_expr_free(stmt->expr.expression);
             break;
+        case AST_STMT_DECL:
+            ast_decl_free(stmt->decl.declaration);
+            break;
         case AST_STMT_IF:
             ast_expr_free(stmt->if_stmt.condition);
             ast_stmt_free(stmt->if_stmt.then_stmt);
@@ -246,6 +264,9 @@ ast_decl_free(AstDecl *decl)
     if (!decl) return;
     
     switch (decl->kind) {
+        case AST_DECL_IMPORT:
+            // Import declarations only contain token references, no additional cleanup needed
+            break;
         case AST_DECL_FUNCTION:
             for (usize i = 0; i < array_count(decl->function.parameters); i++) {
                 ast_decl_free(array_at(decl->function.parameters, i));
@@ -322,13 +343,19 @@ parser_init(Lexer *l)
     Parser parser = {0};
     parser.lexer = l;
     parser.index = 0;
-    parser.ast = ast_program_create();
+    parser.ast = nullptr;
+    parser.error = PE_UNKNOWN;
+    parser.error_line = 1;
+    parser.error_col = 1;
     return parser;
 }
 
 u8
 parser_parse(Parser *p)
 {
+    if (!p->ast) {
+        p->ast = ast_program_create();
+    }
     return parse_director(p);
 }
 
@@ -354,32 +381,31 @@ parse_director(Parser *p)
     while (!check(p, Tkn_EOT)) {
         AstDecl *decl = nullptr;
         
-        // Check if this is a variable or constant declaration: identifier :: 
-        if (check(p, Tkn_Identifier) && next(p).type == Tkn_Colon) {
-            Token name_token = current(p);
-            advance(p); // consume identifier
-            advance(p); // consume :
+        // Look ahead for patterns: identifier :: something
+        if (check(p, Tkn_Identifier) && 
+            p->index + 1 < array_count(p->lexer->tokens) && 
+            array_at(p->lexer->tokens, p->index + 1).type == Tkn_Colon &&
+            p->index + 2 < array_count(p->lexer->tokens) &&
+            array_at(p->lexer->tokens, p->index + 2).type == Tkn_Colon) {
             
-            if (match(p, Tkn_Colon)) {
-                // :: - constant or import or function
-                if (check(p, Tkn_ImportKeyword)) {
-                    // Rewind to identifier and parse as import
-                    p->index -= 3; // Back to identifier
+            // identifier :: something - could be import, function, or constant
+            if (p->index + 3 < array_count(p->lexer->tokens)) {
+                TknType third_token = array_at(p->lexer->tokens, p->index + 3).type;
+                if (third_token == Tkn_ImportKeyword) {
                     decl = parse_import(p);
-                } else if (check(p, Tkn_FnKeyword)) {
-                    // Rewind to identifier and parse as function
-                    p->index -= 3; // Back to identifier
+                } else if (third_token == Tkn_FnKeyword) {
                     decl = parse_function(p);
                 } else {
-                    // Parse as constant
-                    p->index -= 2;
                     decl = parse_variable(p);
                 }
             } else {
-                // : - variable declaration
-                p->index -= 2;
                 decl = parse_variable(p);
             }
+        } else if (check(p, Tkn_Identifier) && 
+                   p->index + 1 < array_count(p->lexer->tokens) && 
+                   array_at(p->lexer->tokens, p->index + 1).type == Tkn_Colon) {
+            // identifier : something - could be := or : type = 
+            decl = parse_variable(p);
         } else {
             switch (current(p).type) {
                 case Tkn_ImportKeyword: 
@@ -400,7 +426,7 @@ parse_director(Parser *p)
                 case Tkn_EOT: 
                     return SUCCESS;
                 default:
-                    log_error("Unexpected token in global scope");
+                    set_parser_error(p, PE_UNEXPECTED_TOKEN);
                     return FAILURE;
             }
         }
@@ -419,29 +445,36 @@ parse_director(Parser *p)
 AstDecl *
 parse_import(Parser *p)
 {
-    Token import_token = current(p);
-    AstDecl *import_decl = ast_decl_create(AST_DECL_IMPORT, import_token);
-    
     // Parse: alias :: import "module/path"
-    if (check(p, Tkn_Identifier)) {
-        import_decl->import.alias = current(p);
-        advance(p);
-        
-        if (!match(p, Tkn_Colon) || !match(p, Tkn_Colon)) {
-            log_error("Expected '::' after import alias");
-            ast_decl_free(import_decl);
-            return nullptr;
-        }
+    Token alias_token = current(p);
+    AstDecl *import_decl = ast_decl_create(AST_DECL_IMPORT, alias_token);
+    
+    // Expect identifier alias
+    if (!check(p, Tkn_Identifier)) {
+        set_parser_error(p, PE_EXPECTED_IDENTIFIER);
+        ast_decl_free(import_decl);
+        return nullptr;
     }
     
+    import_decl->import.alias = current(p);
+    advance(p);
+    
+    // Expect ::
+    if (!match(p, Tkn_Colon) || !match(p, Tkn_Colon)) {
+        set_parser_error(p, PE_UNEXPECTED_TOKEN);
+        ast_decl_free(import_decl);
+        return nullptr;
+    }
+    
+    // Expect import keyword
     if (!match(p, Tkn_ImportKeyword)) {
-        log_error("Expected 'import' keyword");
+        set_parser_error(p, PE_UNEXPECTED_TOKEN);
         ast_decl_free(import_decl);
         return nullptr;
     }
     
     if (!check(p, Tkn_StringLiteral)) {
-        log_error("Expected string literal for import path");
+        set_parser_error(p, PE_EXPECTED_EXPRESSION);
         ast_decl_free(import_decl);
         return nullptr;
     }
@@ -590,9 +623,24 @@ parse_variable(Parser *p)
             }
         }
     } else if (!has_let) {
-        // Shorthand declaration: x := value
-        if (!match(p, Tkn_Colon) || !match(p, Tkn_Equal)) {
-            log_error("Expected ':=' for variable declaration");
+        // Check if we're at a colon (for :=) or if tokens were already consumed
+        if (check(p, Tkn_Colon)) {
+            if (next(p).type == Tkn_Equal) {
+                // x := value
+                advance(p); // consume :
+                advance(p); // consume =
+            } else if (next(p).type == Tkn_Colon) {
+                // x :: value (constant)
+                advance(p); // consume :
+                advance(p); // consume :
+                var_decl->variable.is_constant = true;
+            } else {
+                log_error("Expected ':=' or '::' for variable declaration");
+                ast_decl_free(var_decl);
+                return nullptr;
+            }
+        } else {
+            log_error("Expected ':' after variable name");
             ast_decl_free(var_decl);
             return nullptr;
         }
@@ -749,11 +797,27 @@ parse_statement(Parser *p)
             AstDecl *var_decl = parse_variable(p);
             if (!var_decl) return nullptr;
             
-            AstStmt *stmt = ast_stmt_create(AST_STMT_EXPR, var_decl->token);
-            stmt->expr.expression = ast_expr_create(AST_EXPR_LITERAL, var_decl->token);
+            AstStmt *stmt = ast_stmt_create(AST_STMT_DECL, var_decl->token);
+            stmt->decl.declaration = var_decl;
             return stmt;
         }
         default: {
+            // Check if this might be a variable declaration: identifier : type = value
+            if (check(p, Tkn_Identifier) && 
+                p->index + 1 < array_count(p->lexer->tokens) && 
+                array_at(p->lexer->tokens, p->index + 1).type == Tkn_Colon &&
+                p->index + 2 < array_count(p->lexer->tokens) &&
+                array_at(p->lexer->tokens, p->index + 2).type != Tkn_Equal &&
+                array_at(p->lexer->tokens, p->index + 2).type != Tkn_Colon) {
+                // This looks like a typed variable declaration
+                AstDecl *var_decl = parse_variable(p);
+                if (!var_decl) return nullptr;
+                
+                AstStmt *stmt = ast_stmt_create(AST_STMT_DECL, var_decl->token);
+                stmt->decl.declaration = var_decl;
+                return stmt;
+            }
+            
             // Expression statement
             AstExpr *expr = parse_expression(p);
             if (!expr) return nullptr;
@@ -807,11 +871,8 @@ parse_if_statement(Parser *p)
     
     AstStmt *if_stmt = ast_stmt_create(AST_STMT_IF, if_token);
     
-    if (!match(p, Tkn_OpenParen)) {
-        log_error("Expected '(' after 'if'");
-        ast_stmt_free(if_stmt);
-        return nullptr;
-    }
+    // Support both `if (condition)` and `if condition` syntax
+    bool has_parens = match(p, Tkn_OpenParen);
     
     if_stmt->if_stmt.condition = parse_expression(p);
     if (!if_stmt->if_stmt.condition) {
@@ -819,7 +880,7 @@ parse_if_statement(Parser *p)
         return nullptr;
     }
     
-    if (!match(p, Tkn_CloseParen)) {
+    if (has_parens && !match(p, Tkn_CloseParen)) {
         log_error("Expected ')' after if condition");
         ast_stmt_free(if_stmt);
         return nullptr;
@@ -885,6 +946,49 @@ parse_for_statement(Parser *p)
     
     AstStmt *for_stmt = ast_stmt_create(AST_STMT_FOR, for_token);
     
+    // Check for new syntax: for i in 0..3
+    if (check(p, Tkn_Identifier)) {
+        Token variable_token = current(p);
+        advance(p); // consume identifier
+        
+        if (!match(p, Tkn_InKeyword)) {
+            log_error("Expected 'in' after for loop variable");
+            ast_stmt_free(for_stmt);
+            return nullptr;
+        }
+        
+        // Parse the range expression (e.g., 0..3)
+        AstExpr *range_expr = parse_expression(p);
+        if (!range_expr) {
+            ast_stmt_free(for_stmt);
+            return nullptr;
+        }
+        
+        // For now, map the new syntax to the old structure
+        // Create a variable declaration for the loop variable
+        AstDecl *var_decl = ast_decl_create(AST_DECL_VARIABLE, variable_token);
+        var_decl->variable.name = variable_token;
+        var_decl->variable.type = NULL; // Type will be inferred
+        var_decl->variable.initializer = NULL; // No initial value in the declaration
+        var_decl->variable.is_constant = false;
+        
+        AstStmt *init_stmt = ast_stmt_create(AST_STMT_DECL, variable_token);
+        init_stmt->decl.declaration = var_decl;
+        
+        for_stmt->for_stmt.init = init_stmt;
+        for_stmt->for_stmt.condition = range_expr; // Store range expression as condition for now
+        for_stmt->for_stmt.update = NULL; // No explicit update in range-based for
+        
+        for_stmt->for_stmt.body = parse_statement(p);
+        if (!for_stmt->for_stmt.body) {
+            ast_stmt_free(for_stmt);
+            return nullptr;
+        }
+        
+        return for_stmt;
+    }
+    
+    // Fallback to C-style for loop syntax: for (init; condition; update)
     if (!match(p, Tkn_OpenParen)) {
         log_error("Expected '(' after 'for'");
         ast_stmt_free(for_stmt);
@@ -982,6 +1086,40 @@ parse_assignment(Parser *p)
         assign->assign.operator = operator;
         assign->assign.value = value;
         return assign;
+    } else if (check(p, Tkn_Colon) && next(p).type == Tkn_Equal) {
+        // Handle := operator (two separate tokens)
+        Token colon_token = current(p);
+        advance(p); // consume :
+        advance(p); // consume =
+        
+        AstExpr *value = parse_assignment(p);
+        if (!value) {
+            ast_expr_free(expr);
+            return nullptr;
+        }
+        
+        AstExpr *assign = ast_expr_create(AST_EXPR_ASSIGN, colon_token);
+        assign->assign.target = expr;
+        assign->assign.operator = colon_token; // Use colon token to represent :=
+        assign->assign.value = value;
+        return assign;
+    } else if (check(p, Tkn_Colon) && next(p).type == Tkn_Colon) {
+        // Handle :: operator (constant assignment)
+        Token colon_token = current(p);
+        advance(p); // consume first :
+        advance(p); // consume second :
+        
+        AstExpr *value = parse_assignment(p);
+        if (!value) {
+            ast_expr_free(expr);
+            return nullptr;
+        }
+        
+        AstExpr *assign = ast_expr_create(AST_EXPR_ASSIGN, colon_token);
+        assign->assign.target = expr;
+        assign->assign.operator = colon_token; // Use colon token to represent ::
+        assign->assign.value = value;
+        return assign;
     }
     
     return expr;
@@ -1066,7 +1204,7 @@ parse_comparison(Parser *p)
     if (!expr) return nullptr;
     
     while (match(p, Tkn_Greater) || match(p, Tkn_GreaterEql) || 
-           match(p, Tkn_Less) || match(p, Tkn_LessEql)) {
+           match(p, Tkn_Less) || match(p, Tkn_LessEql) || match(p, Tkn_DotDot)) {
         Token operator = previous(p);
         AstExpr *right = parse_term(p);
         if (!right) {
@@ -1236,7 +1374,7 @@ parse_primary(Parser *p)
         return expr;
     }
     
-    log_error("Expected expression");
+    set_parser_error(p, PE_EXPECTED_EXPRESSION);
     return nullptr;
 }
 
@@ -1309,4 +1447,88 @@ parse_type(Parser *p)
     
     log_error("Expected type");
     return nullptr;
+}
+
+cstr
+parser_err_msg(const ParseErr error)
+{
+    switch (error)
+    {
+        case PE_UNKNOWN: return "Unknown parser error";
+        case PE_OUT_OF_MEMORY: return "Out of memory";
+        case PE_UNEXPECTED_TOKEN: return "Unexpected token";
+        case PE_EXPECTED_IDENTIFIER: return "Expected identifier";
+        case PE_EXPECTED_EXPRESSION: return "Expected expression";
+        case PE_EXPECTED_TYPE: return "Expected type";
+        case PE_EXPECTED_STATEMENT: return "Expected statement";
+        case PE_EXPECTED_DECLARATION: return "Expected declaration";
+        case PE_UNMATCHED_PAREN: return "Unmatched parenthesis";
+        case PE_UNMATCHED_BRACE: return "Unmatched brace";
+        case PE_UNMATCHED_BRACKET: return "Unmatched bracket";
+        case PE_INVALID_ASSIGNMENT_TARGET: return "Invalid assignment target";
+        case PE_DUPLICATE_PARAMETER: return "Duplicate parameter name";
+        case PE_EMPTY_PARAMETER_LIST: return "Empty parameter list not allowed";
+        case PE_INVALID_FUNCTION_SIGNATURE: return "Invalid function signature";
+        case PE_INVALID_STRUCT_FIELD: return "Invalid struct field";
+        case PE_INVALID_ENUM_MEMBER: return "Invalid enum member";
+        default: return "Unknown error";
+    }
+}
+
+cstr
+parser_err_advice(const ParseErr error)
+{
+    switch (error)
+    {
+        case PE_UNEXPECTED_TOKEN: return "Check the syntax and remove or replace the unexpected token";
+        case PE_EXPECTED_IDENTIFIER: return "Provide a valid identifier name";
+        case PE_EXPECTED_EXPRESSION: return "Add a valid expression";
+        case PE_EXPECTED_TYPE: return "Specify a valid type";
+        case PE_EXPECTED_STATEMENT: return "Add a valid statement";
+        case PE_EXPECTED_DECLARATION: return "Add a valid declaration";
+        case PE_UNMATCHED_PAREN: return "Ensure all parentheses are properly matched";
+        case PE_UNMATCHED_BRACE: return "Ensure all braces are properly matched";
+        case PE_UNMATCHED_BRACKET: return "Ensure all brackets are properly matched";
+        case PE_INVALID_ASSIGNMENT_TARGET: return "Only variables and fields can be assigned to";
+        case PE_DUPLICATE_PARAMETER: return "Use unique parameter names";
+        case PE_EMPTY_PARAMETER_LIST: return "Remove empty parameter list or add parameters";
+        case PE_INVALID_FUNCTION_SIGNATURE: return "Check function syntax: fn name(params) return_type";
+        case PE_INVALID_STRUCT_FIELD: return "Fields must have name: type format";
+        case PE_INVALID_ENUM_MEMBER: return "Enum members must be valid identifiers";
+        case PE_OUT_OF_MEMORY: return "The compiler needs more memory";
+        default: return "Review the code syntax";
+    }
+}
+
+u8
+parser_report_error(Parser *p)
+{
+    File *file = p->lexer->file;
+    uint line = p->error_line;
+    uint col = p->error_col;
+    
+    fprintf(stderr, " > %s%s%s:%u:%u: %serror: %s%s%s\n", BOLD, WHITE, file->name, line, col, LRED,
+            LBLUE, parser_err_msg(p->error), RESET);
+    
+    // Find line boundaries for context
+    uint low = 0, high = file->length;
+    for (uint i = 0; i < file->length; i++) {
+        if (file->contents[i] == '\n') {
+            if (i < p->error_line) low = i + 1;
+            if (i >= p->error_line && high == file->length) high = i;
+        }
+    }
+    
+    uint _length = high - low;
+    if (_length > 0) {
+        fprintf(stderr, "  %s%u%s | %.*s\n", LYELLOW, line, RESET, _length, (file->contents + low));
+        
+        // Print caret pointing to error column
+        fprintf(stderr, "  %s%s |", LYELLOW, "    ");
+        for (uint i = 0; i < col - 1; i++) fprintf(stderr, " ");
+        fprintf(stderr, "%s^%s\n", LRED, RESET);
+    }
+    
+    fprintf(stderr, " > Advice: %s%s\n", RESET, parser_err_advice(p->error));
+    return FAILURE;
 }

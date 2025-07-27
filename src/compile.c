@@ -45,7 +45,10 @@ compile_parser_stage(compile_options *options, Lexer *lexer, Parser *parser)
 
     if (!options->lex_only) {
         u8 status = parser_parse(parser);
-        ASSERT_RET_FAIL(status != FAILURE, "Parser error");
+        if (status == FAILURE) {
+            parser_report_error(parser);
+            return FAILURE;
+        }
         return status;
     }
 

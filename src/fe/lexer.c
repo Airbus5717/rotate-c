@@ -168,6 +168,7 @@ lex_identifiers(Lexer *l)
                     break;
                 case 'i':
                     if (lex_keyword_match(l, "if", 2)) _type = Tkn_IfKeyword;
+                    if (lex_keyword_match(l, "in", 2)) _type = Tkn_InKeyword;
                     break;
                 case 'o':
                     if (lex_keyword_match(l, "or", 2)) _type = Tkn_OrKeyword;
@@ -306,13 +307,19 @@ lex_numbers(Lexer *l)
     }
 
     bool reached_dot = false;
-    while (isdigit(lex_current(l)) || lex_current(l) == '.')
+    while (isdigit(lex_current(l)))
     {
         lex_advance_len_inc(l);
-        if (lex_current(l) == '.')
-        {
-            if (reached_dot) break;
-            reached_dot = true;
+    }
+    
+    // Check for decimal point, but only if it's not part of a range operator
+    if (lex_current(l) == '.' && lex_peek(l) != '.') {
+        reached_dot = true;
+        lex_advance_len_inc(l);
+        
+        // Continue reading digits after decimal point
+        while (isdigit(lex_current(l))) {
+            lex_advance_len_inc(l);
         }
     }
 
@@ -505,7 +512,12 @@ lex_symbols(Lexer *l)
         case ']': return lex_add_token(l, Tkn_CloseSQRBrackets);
         case ',': return lex_add_token(l, Tkn_Comma);
         case ';': return lex_add_terminator(l);
-        case '.': return lex_add_token(l, Tkn_Dot);
+        case '.': 
+            if (lex_peek(l) == '.') {
+                lex_advance(l); // consume second dot
+                return lex_add_token(l, Tkn_DotDot);
+            }
+            return lex_add_token(l, Tkn_Dot);
         case '%': return lex_add_token(l, Tkn_Mod);
         // TODO(5717) bug below needs to check an eql during peeking
 
@@ -737,9 +749,9 @@ lex_report_error(Lexer *l)
         memset(arrows, '^', len);
         arrows[len] = '\0';
 
-        fprintf(stderr, "  %*c |%*c%s%s%s\n", num_line_digits, ' ', spaces, ' ', LRED, BOLD, arrows);
+        fprintf(stderr, "  %*c |%*c%s%s%s\n", num_line_digits, ' ', spaces - 1, ' ', LRED, BOLD, arrows);
     } else {
-        fprintf(stderr, "  %*c |%*c%s%s^^^---...\n", num_line_digits, ' ', spaces, ' ', LRED, BOLD);
+        fprintf(stderr, "  %*c |%*c%s%s^^^---...\n", num_line_digits, ' ', spaces - 1, ' ', LRED, BOLD);
     }
 
     fprintf(stderr, " > Advice: %s%s\n", RESET, lexer_err_advice(l->error));
@@ -782,7 +794,8 @@ u8 lex_nested_comments(Lexer *l) {
         lex_advance(l);
     }
 
-    if (depth > 0) {
+    // Allow unclosed comments at EOF
+    if (depth > 0 && lex_is_not_eof(l)) {
         l->error = LE_NOT_CLOSED_COMMENT;
         lex_restore_state_for_err(l);
         return FAILURE;

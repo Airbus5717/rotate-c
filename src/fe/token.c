@@ -43,12 +43,14 @@ tkn_type_describe(const TknType type)
         case Tkn_IfKeyword: return "if";
         case Tkn_ElseKeyword: return "else";
         case Tkn_ForKeyword: return "for";
+        case Tkn_InKeyword: return "in";
         case Tkn_WhileKeyword: return "while";
         case Tkn_Greater: return "greater'>'";
         case Tkn_Less: return "less'<'";
         case Tkn_TrueLiteral: return "bool:true";
         case Tkn_FalseLiteral: return "bool:false";
         case Tkn_Dot: return "dot'.'";
+        case Tkn_DotDot: return "range'..'";
         case Tkn_Mod: return "%";
         case Tkn_Not: return "not'!'";
         case Tkn_AndKeyword: return "and";

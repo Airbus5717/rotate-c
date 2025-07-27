@@ -71,7 +71,9 @@ static inline Array_Header *array_new(Array_Header *header, usize initial_size)
         if ((arr)->count + 1 > (arr)->capacity)                                                    \
         {                                                                                          \
             (arr)->capacity <<= 1;                                                                 \
-            (arr) = realloc((arr), array_total_size(arr));                                         \
+            void *temp = realloc((arr), array_total_size(arr));                                   \
+            ASSERT(temp != nullptr, "Array realloc failed");                                            \
+            (arr) = temp;                                                                          \
         }                                                                                          \
         (arr)->elements[(arr)->count++] = (value);                                                 \
     } while (0)
